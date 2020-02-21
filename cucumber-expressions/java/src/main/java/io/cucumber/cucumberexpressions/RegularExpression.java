@@ -1,13 +1,11 @@
 package io.cucumber.cucumberexpressions;
 
+import static io.cucumber.cucumberexpressions.ParameterType.createAnonymousParameterType;
+
 import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
-
-import static io.cucumber.cucumberexpressions.ParameterType.createAnonymousParameterType;
 
 final class RegularExpression implements Expression {
     private final Pattern expressionRegexp;
@@ -43,21 +41,16 @@ final class RegularExpression implements Expression {
             boolean hasTypeHint = typeHintIndex < typeHints.length;
             final Type typeHint = hasTypeHint ? typeHints[typeHintIndex++] : String.class;
 
-            ParameterType<?> parameterType = parameterTypeRegistry.lookupByRegexp(parameterTypeRegexp, expressionRegexp, text);
-
-            // When there is a conflict between the type hint from the regular expression and the method
-            // prefer the the parameter type associated with the regular expression. This ensures we will
-            // use the internal/user registered parameter transformer rather then the default.
-            //
-            // Unless the parameter type indicates it is the stronger type hint.
-            if (parameterType != null && hasTypeHint && !parameterType.useRegexpMatchAsStrongTypeHint()) {
-                if (!parameterType.getType().equals(typeHint)) {
-                    parameterType = null;
-                }
-            }
-
-            if (parameterType == null) {
+            ParameterType<?> parameterType;
+            if (hasTypeHint) {
+                // When there is a type hint, use it. For strongly typed languages, the target
+                // type must match the type of the step definition.
                 parameterType = createAnonymousParameterType(parameterTypeRegexp);
+            } else {
+                parameterType = parameterTypeRegistry.lookupByRegexp(parameterTypeRegexp, expressionRegexp, text);
+                if (parameterType == null) {
+                    parameterType = createAnonymousParameterType(parameterTypeRegexp);
+                }
             }
 
             // Either from createAnonymousParameterType or lookupByRegexp

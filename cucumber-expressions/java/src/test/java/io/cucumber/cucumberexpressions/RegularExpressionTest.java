@@ -1,6 +1,10 @@
 package io.cucumber.cucumberexpressions;
 
-import org.junit.jupiter.api.Test;
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
+import static java.util.regex.Pattern.compile;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -8,11 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-import static java.util.Arrays.asList;
-import static java.util.Collections.emptyList;
-import static java.util.Collections.singletonList;
-import static java.util.regex.Pattern.compile;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import org.junit.jupiter.api.Test;
 
 public class RegularExpressionTest {
 
@@ -121,7 +121,7 @@ public class RegularExpressionTest {
     }
 
     @Test
-    public void uses_parameter_type_registry_when_parameter_type_is_defined() {
+    public void uses_type_hint_when_parameter_type_is_defined_and_type_hint_agrees() {
         parameterTypeRegistry.defineParameterType(new ParameterType<>(
                 "test",
                 "[\"a-z ]+",
@@ -134,23 +134,24 @@ public class RegularExpressionTest {
                 }
         ));
         List<?> match = match(compile("a quote ([\"a-z ]+)"), "a quote \" and quote \"", String.class);
-        assertEquals(singletonList("\" AND QUOTE \""), match);
+        assertEquals(singletonList("\" and quote \""), match);
     }
 
     @Test
-    public void ignores_type_hint_when_parameter_type_has_strong_type_hint() {
+    public void follows_type_hint_when_parameter_type_is_defined_and_conflicts() {
         parameterTypeRegistry.defineParameterType(new ParameterType<>(
                 "test",
-                "one|two|three",
-                Integer.class,
-                new Transformer<Integer>() {
+                "\\d\\d\\d\\d",
+                String.class,
+                new Transformer<String>() {
                     @Override
-                    public Integer transform(String s) {
-                        return 42;
+                    public String transform(String s) {
+                        return s;
                     }
-                }, false, false, true
-        ));
-        assertEquals(asList(42), match(compile("(one|two|three)"), "one", String.class));
+                }
+                ));
+        List<?> match = match(compile("a number (\\d\\d\\d\\d)"), "a number 2000", Integer.class);
+        assertEquals(singletonList(2000), match);
     }
 
     @Test
@@ -164,9 +165,36 @@ public class RegularExpressionTest {
                     public Integer transform(String s) {
                         return 42;
                     }
-                }, false, false, false
+                }, false, false
         ));
         assertEquals(asList("one"), match(compile("(one|two|three)"), "one", String.class));
+    }
+
+    @Test
+    public void follows_type_hint_when_multiple_parameter_types_and_neither_preferred() {
+        parameterTypeRegistry.defineParameterType(new ParameterType<>(
+                "testint",
+                "\\d\\d\\d",
+                Integer.class,
+                new Transformer<Integer>() {
+                    @Override
+                    public Integer transform(String s) {
+                        return 42;
+                    }
+                }, false, false
+                ));
+        parameterTypeRegistry.defineParameterType(new ParameterType<>(
+                "teststring",
+                "\\d\\d\\d",
+                String.class,
+                new Transformer<String>() {
+                    @Override
+                    public String transform(String s) {
+                        return s;
+                    }
+                }, false, false
+                ));
+        assertEquals(asList(1.0), match(compile("(\\d\\d\\d)"), "001", Double.class));
     }
 
     @Test
