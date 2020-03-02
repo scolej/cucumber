@@ -1,22 +1,20 @@
 package io.cucumber.cucumberexpressions;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.function.Executable;
-
-import java.util.List;
-import java.util.Locale;
-import java.util.regex.Pattern;
-
 import static java.lang.Integer.parseInt;
 import static java.util.Arrays.asList;
-import static java.util.regex.Pattern.compile;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.fail;
+
+import java.util.List;
+import java.util.Locale;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 
 public class CustomParameterTypeTest {
 
@@ -145,24 +143,6 @@ public class CustomParameterTypeTest {
     }
 
     @Test
-    public void warns_when_anonymous_parameter_has_multiple_capture_groups() {
-        parameterTypeRegistry = new ParameterTypeRegistry(Locale.ENGLISH);
-        Expression expression = new RegularExpression(Pattern.compile("^A (\\d+) thick line from ((\\d+),\\s*(\\d+),\\s*(\\d+)) to ((\\d+),\\s*(\\d+),\\s*(\\d+))$"), parameterTypeRegistry);
-        List<Argument<?>> arguments = expression.match("A 5 thick line from 10,20,30 to 40,50,60",
-                Integer.class, Coordinate.class, Coordinate.class);
-
-        arguments.get(0).getValue();
-
-        final Executable testMethod = () -> arguments.get(1).getValue();
-
-        final CucumberExpressionException thrownException = assertThrows(CucumberExpressionException.class, testMethod);
-        assertThat("Unexpected message", thrownException.getMessage(), is(equalTo(
-                "Anonymous ParameterType has multiple capture groups [(\\d+),\\s*(\\d+),\\s*(\\d+)]. " +
-                        "You can only use a single capture group in an anonymous ParameterType."
-        )));
-    }
-
-    @Test
     public void matches_CucumberExpression_parameters_with_custom_parameter_type_using_optional_group() {
         parameterTypeRegistry = new ParameterTypeRegistry(Locale.ENGLISH);
         parameterTypeRegistry.defineParameterType(new ParameterType<>(
@@ -247,23 +227,6 @@ public class CustomParameterTypeTest {
 
         assertEquals(new CssColor("blue"), new CucumberExpression("I have a {css-color} ball", parameterTypeRegistry).match("I have a blue ball").get(0).getValue());
         assertEquals(new Color("blue"), new CucumberExpression("I have a {color} ball", parameterTypeRegistry).match("I have a blue ball").get(0).getValue());
-    }
-
-    @Test
-    public void matches_RegularExpression_arguments_with_custom_parameter_type_without_name() {
-        parameterTypeRegistry = new ParameterTypeRegistry(Locale.ENGLISH);
-        parameterTypeRegistry.defineParameterType(new ParameterType<>(
-                null,
-                "red|blue|yellow",
-                Color.class,
-                Color::new,
-                false,
-                false
-        ));
-
-        Expression expression = new RegularExpression(compile("I have a (red|blue|yellow) ball"), parameterTypeRegistry);
-        Object argumentValue = expression.match("I have a red ball").get(0).getValue();
-        assertEquals(new Color("red"), argumentValue);
     }
 
     ///// RegularExpression

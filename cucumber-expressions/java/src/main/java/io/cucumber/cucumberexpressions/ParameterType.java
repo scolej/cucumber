@@ -1,13 +1,13 @@
 package io.cucumber.cucumberexpressions;
 
-import org.apiguardian.api.API;
+import static java.util.Collections.singletonList;
 
 import java.lang.reflect.Type;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static java.util.Collections.singletonList;
+import org.apiguardian.api.API;
 
 @API(status = API.Status.STABLE)
 public final class ParameterType<T> implements Comparable<ParameterType<?>> {
@@ -22,7 +22,13 @@ public final class ParameterType<T> implements Comparable<ParameterType<?>> {
     private final boolean useForSnippets;
     private final CaptureGroupTransformer<T> transformer;
     private final boolean anonymous;
-    private final boolean useRegexpMatchAsStrongTypeHint;
+
+    /**
+     * Transformer which immediately throws an exception when invoked.
+     */
+    private static final CaptureGroupTransformer<Object> UNSUPPORTED_GROUP_TRANSFORMER = unused -> {
+        throw new UnsupportedOperationException("Anonymous transform must be deanonymized before use");
+    };
 
     static void checkParameterTypeName(String name) {
         String unescapedTypeName = UNESCAPE_PATTERN.matcher(name).replaceAll("$2");
@@ -33,12 +39,11 @@ public final class ParameterType<T> implements Comparable<ParameterType<?>> {
     }
 
     static ParameterType<Object> createAnonymousParameterType(String regexp) {
-        return new ParameterType<>("", singletonList(regexp), Object.class, new CaptureGroupTransformer<Object>() {
+        return new ParameterType<>("", singletonList(regexp), Object.class, UNSUPPORTED_GROUP_TRANSFORMER, false, true, true);
+    }
 
-            public Object transform(String[] arg) {
-                throw new UnsupportedOperationException("Anonymous transform must be deanonymized before use");
-            }
-        }, false, true, false, true);
+    static ParameterType<Object> createAnonymousParameterType(String regexp, Type type, Transformer<Object> transformer) {
+        return new ParameterType<>("anonymous", singletonList(regexp), type, new TransformerAdaptor<>(transformer), false, false, false);
     }
 
     @SuppressWarnings("unchecked")
@@ -57,7 +62,7 @@ public final class ParameterType<T> implements Comparable<ParameterType<?>> {
         );
     }
 
-    private ParameterType(String name, List<String> regexps, Type type, CaptureGroupTransformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch, boolean useRegexpMatchAsStrongTypeHint, boolean anonymous) {
+    private ParameterType(String name, List<String> regexps, Type type, CaptureGroupTransformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch, boolean anonymous) {
         if (regexps == null) throw new NullPointerException("regexps cannot be null");
         if (type == null) throw new NullPointerException("type cannot be null");
         if (transformer == null) throw new NullPointerException("transformer cannot be null");
@@ -69,31 +74,10 @@ public final class ParameterType<T> implements Comparable<ParameterType<?>> {
         this.useForSnippets = useForSnippets;
         this.preferForRegexpMatch = preferForRegexpMatch;
         this.anonymous = anonymous;
-        this.useRegexpMatchAsStrongTypeHint = useRegexpMatchAsStrongTypeHint;
-    }
-
-    public ParameterType(String name, List<String> regexps, Type type, CaptureGroupTransformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch, boolean useRegexpMatchAsStrongTypeHint) {
-        this(name, regexps, type, transformer, useForSnippets, preferForRegexpMatch, useRegexpMatchAsStrongTypeHint, false);
     }
 
     public ParameterType(String name, List<String> regexps, Type type, CaptureGroupTransformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch) {
-        // Unless explicitly set useRegexpMatchAsStrongTypeHint is true.
-        //
-        // Reasoning:
-        // 1. Pure cucumber expression users will not notice this in either scenario.
-        // 2. Pure regular expression users will benefit because BuiltInParameterTransformer can now seamlessly
-        //    transform any captured values. (For all built in types useRegexpMatchAsStrongTypeHint is explicitly set to
-        //    false.)
-        // 2. Regular expression users that define a default transformer have little need to define parameter types. The
-        //    default transformer should be sufficiently powerful to meet their needs and will often allow users to add
-        //    custom creation methods e.g. Jacksons @JsonFactory.
-        // 3. Users who mix regular and cucumber expressions may run into conflicts when a registered cucumber expression
-        //    and unregistered happens to collide. However this was the situation before this flag was added.
-        // 4. Regular expression users who define custom parameter types do so with the expectation that the parameter
-        //    will be matched. Subverting this expectation when the method signature does not match may result in a
-        //    parameter transformer that is unable to convert to the desired type. Leaving the user puzzled as to why
-        //    his transform was ignored.
-        this(name, regexps, type, transformer, useForSnippets, preferForRegexpMatch, true);
+        this(name, regexps, type, transformer, useForSnippets, preferForRegexpMatch, false);
     }
 
     public ParameterType(String name, List<String> regexps, Class<T> type, CaptureGroupTransformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch) {
@@ -112,24 +96,12 @@ public final class ParameterType<T> implements Comparable<ParameterType<?>> {
         this(name, singletonList(regexp), type, transformer, true, false);
     }
 
-    public ParameterType(String name, List<String> regexps, Type type, Transformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch, boolean useRegexpMatchAsStrongTypeHint) {
-        this(name, regexps, type, new TransformerAdaptor<>(transformer), useForSnippets, preferForRegexpMatch, useRegexpMatchAsStrongTypeHint);
-    }
-
     public ParameterType(String name, List<String> regexps, Type type, Transformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch) {
         this(name, regexps, type, new TransformerAdaptor<>(transformer), useForSnippets, preferForRegexpMatch);
     }
 
-    public ParameterType(String name, List<String> regexps, Class<T> type, Transformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch, boolean useRegexpMatchAsStrongTypeHint) {
-        this(name, regexps, (Type) type, transformer, useForSnippets, preferForRegexpMatch, useRegexpMatchAsStrongTypeHint);
-    }
-
     public ParameterType(String name, List<String> regexps, Class<T> type, Transformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch) {
         this(name, regexps, (Type) type, transformer, useForSnippets, preferForRegexpMatch);
-    }
-
-    public ParameterType(String name, String regexp, Class<T> type, Transformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch, boolean useRegexpMatchAsStrongTypeHint) {
-        this(name, singletonList(regexp), type, transformer, useForSnippets, preferForRegexpMatch, useRegexpMatchAsStrongTypeHint);
     }
 
     public ParameterType(String name, String regexp, Class<T> type, Transformer<T> transformer, boolean useForSnippets, boolean preferForRegexpMatch) {
@@ -196,22 +168,8 @@ public final class ParameterType<T> implements Comparable<ParameterType<?>> {
         return anonymous;
     }
 
-    /**
-     * Indicates whether or not this parameter provides a strong type hint when considering a
-     * regular expression match. If so, the type hint provided by the method arguments  will be
-     * ignored. If not, when both type hints are in agreement, this parameter types transformer
-     * will be used. Otherwise parameter transformation for a regular expression match will be
-     * handled by {@link ParameterTypeRegistry#getDefaultParameterTransformer()}.
-     *
-     * @return true if this parameter type provides a type hint when considering a regular
-     * expression match
-     */
-    public boolean useRegexpMatchAsStrongTypeHint() {
-        return useRegexpMatchAsStrongTypeHint;
-    }
-
     ParameterType<Object> deAnonymize(Type type, Transformer<Object> transformer) {
-        return new ParameterType<>("anonymous", regexps, type, new TransformerAdaptor<>(transformer), useForSnippets, preferForRegexpMatch, useRegexpMatchAsStrongTypeHint, anonymous);
+        return new ParameterType<>("anonymous", regexps, type, new TransformerAdaptor<>(transformer), useForSnippets, preferForRegexpMatch, anonymous);
     }
 
     T transform(List<String> groupValues) {

@@ -1,6 +1,10 @@
 package io.cucumber.cucumberexpressions;
 
-import org.junit.jupiter.api.Test;
+import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
+import static java.util.regex.Pattern.compile;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -8,11 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-import static java.util.Arrays.asList;
-import static java.util.Collections.emptyList;
-import static java.util.Collections.singletonList;
-import static java.util.regex.Pattern.compile;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import org.junit.jupiter.api.Test;
 
 public class RegularExpressionTest {
 
@@ -22,15 +22,15 @@ public class RegularExpressionTest {
     public void documentation_match_arguments() {
         Pattern expr = Pattern.compile("I have (\\d+) cukes? in my (\\w+) now");
         Expression expression = new RegularExpression(expr, parameterTypeRegistry);
-        List<Argument<?>> match = expression.match("I have 7 cukes in my belly now");
+        List<Argument<?>> match = expression.match("I have 7 cukes in my belly now", Integer.class, String.class);
         assertEquals(7, match.get(0).getValue());
         assertEquals("belly", match.get(1).getValue());
     }
 
     @Test
-    public void matches_positive_int() {
+    public void matches_positive_int_without_hint() {
         List<?> match = match(compile("(\\d+)"), "22");
-        assertEquals(singletonList(22), match);
+        assertEquals(singletonList("22"), match);
     }
 
     @Test
@@ -61,16 +61,16 @@ public class RegularExpressionTest {
     public void ignores_non_capturing_groups() {
         String expr = "(\\S+) ?(can|cannot)? (?:delete|cancel) the (\\d+)(?:st|nd|rd|th) (attachment|slide) ?(?:upload)?";
         String step = "I can cancel the 1st slide upload";
-        List<?> match = match(compile(expr), step);
+        List<?> match = match(compile(expr), step, String.class, String.class, Integer.class, String.class);
         assertEquals(asList("I", "can", 1, "slide"), match);
     }
 
     @Test
     public void matches_capture_group_nested_in_optional_one() {
         String regex = "^a (pre-commercial transaction |pre buyer fee model )?purchase(?: for \\$(\\d+))?$";
-        assertEquals(asList(null, null), match(compile(regex), "a purchase"));
-        assertEquals(asList(null, 33), match(compile(regex), "a purchase for $33"));
-        assertEquals(asList("pre buyer fee model ", null), match(compile(regex), "a pre buyer fee model purchase"));
+        assertEquals(asList(null, null), match(compile(regex), "a purchase", String.class, Integer.class));
+        assertEquals(asList(null, 33), match(compile(regex), "a purchase for $33", String.class, Integer.class));
+        assertEquals(asList("pre buyer fee model ", null), match(compile(regex), "a pre buyer fee model purchase", String.class, Integer.class));
     }
 
     @Test
@@ -121,7 +121,7 @@ public class RegularExpressionTest {
     }
 
     @Test
-    public void uses_parameter_type_registry_when_parameter_type_is_defined() {
+    public void uses_type_hint_and_default_transformer_when_parameter_type_is_defined_and_type_hint_agrees() {
         parameterTypeRegistry.defineParameterType(new ParameterType<>(
                 "test",
                 "[\"a-z ]+",
@@ -134,11 +134,28 @@ public class RegularExpressionTest {
                 }
         ));
         List<?> match = match(compile("a quote ([\"a-z ]+)"), "a quote \" and quote \"", String.class);
-        assertEquals(singletonList("\" AND QUOTE \""), match);
+        assertEquals(singletonList("\" and quote \""), match);
     }
 
     @Test
-    public void ignores_type_hint_when_parameter_type_has_strong_type_hint() {
+    public void uses_type_hint_when_parameter_type_is_defined_and_conflicts() {
+        parameterTypeRegistry.defineParameterType(new ParameterType<>(
+                "test",
+                "\\d\\d\\d\\d",
+                String.class,
+                new Transformer<String>() {
+                    @Override
+                    public String transform(String s) {
+                        return s;
+                    }
+                }
+                ));
+        List<?> match = match(compile("a number (\\d\\d\\d\\d)"), "a number 2000", Integer.class);
+        assertEquals(singletonList(2000), match);
+    }
+
+    @Test
+    public void uses_type_hint_when_parameter_type_is_not_preferred() {
         parameterTypeRegistry.defineParameterType(new ParameterType<>(
                 "test",
                 "one|two|three",
@@ -148,35 +165,42 @@ public class RegularExpressionTest {
                     public Integer transform(String s) {
                         return 42;
                     }
-                }, false, false, true
-        ));
-        assertEquals(asList(42), match(compile("(one|two|three)"), "one", String.class));
-    }
-
-    @Test
-    public void follows_type_hint_when_parameter_type_does_not_have_strong_type_hint() {
-        parameterTypeRegistry.defineParameterType(new ParameterType<>(
-                "test",
-                "one|two|three",
-                Integer.class,
-                new Transformer<Integer>() {
-                    @Override
-                    public Integer transform(String s) {
-                        return 42;
-                    }
-                }, false, false, false
+                }, false, false
         ));
         assertEquals(asList("one"), match(compile("(one|two|three)"), "one", String.class));
     }
 
     @Test
-    public void matches_anonymous_parameter_type_with_hint() {
-        assertEquals(singletonList(0.22f), match(compile("(.*)"), "0.22", Float.class));
+    public void uses_type_hint_when_multiple_parameter_types_defined_and_neither_preferred() {
+        parameterTypeRegistry.defineParameterType(new ParameterType<>(
+                "testint",
+                "\\d\\d\\d",
+                Integer.class,
+                new Transformer<Integer>() {
+                    @Override
+                    public Integer transform(String s) {
+                        return 42;
+                    }
+                }, false, false
+                ));
+        parameterTypeRegistry.defineParameterType(new ParameterType<>(
+                "teststring",
+                "\\d\\d\\d",
+                String.class,
+                new Transformer<String>() {
+                    @Override
+                    public String transform(String s) {
+                        return s;
+                    }
+                }, false, false
+                ));
+        assertEquals(asList(1.0), match(compile("(\\d\\d\\d)"), "001", Double.class));
     }
 
     @Test
-    public void matches_anonymous_parameter_type() {
-        assertEquals(singletonList("0.22"), match(compile("(.*)"), "0.22"));
+    public void matches_anonymous_parameter_type_with_no_hint() {
+        List<?> match = match(compile("(.*)"), "0.22");
+        assertEquals(singletonList("0.22"), match);
     }
 
     @Test

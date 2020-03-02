@@ -8,11 +8,11 @@ I have 1 cuke and some \[]^$.|?*+
 ---
 /I have (\d+) cukes? in my (\w+) now/
 I have 22 cukes in my belly now
-[22,"belly"]
+["22","belly"]
 ---
 /I have (-?\d+) cukes? in my (.*) now/
 I have 1 cuke in my belly now
-[1,"belly"]
+["1","belly"]
 ---
 /^Something( with an optional argument)?$/
 Something
